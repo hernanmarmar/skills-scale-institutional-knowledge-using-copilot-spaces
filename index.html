@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Control diario de ingresos y gastos</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: #f6f8fa;
+      color: #1f2328;
+    }
+
+    main {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+
+    h1 {
+      margin-top: 0;
+    }
+
+    section {
+      background: #fff;
+      border: 1px solid #d0d7de;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    form {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 0.75rem;
+      align-items: end;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      font-size: 0.9rem;
+    }
+
+    input,
+    select,
+    button {
+      padding: 0.5rem;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      font-size: 0.95rem;
+    }
+
+    button {
+      cursor: pointer;
+      background: #0969da;
+      color: #fff;
+      border: none;
+    }
+
+    button:hover {
+      background: #0757b3;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.75rem;
+      background: #fff;
+    }
+
+    th,
+    td {
+      border: 1px solid #d0d7de;
+      padding: 0.5rem;
+      text-align: left;
+      font-size: 0.9rem;
+    }
+
+    tfoot td {
+      font-weight: 700;
+    }
+
+    .resumen {
+      display: grid;
+      gap: 0.5rem;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+
+    .resumen p {
+      margin: 0;
+    }
+
+    .empty-message {
+      margin: 0.75rem 0 0;
+      color: #57606a;
+    }
+
+    .filtros {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+      align-items: end;
+    }
+
+    .btn-secondary {
+      background: #57606a;
+    }
+
+    .btn-secondary:hover {
+      background: #444c56;
+    }
+
+    .btn-danger {
+      background: #cf222e;
+    }
+
+    .btn-danger:hover {
+      background: #a40e26;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Control diario de ingresos y gastos</h1>
+
+    <section>
+      <form id="registro-form">
+        <label>
+          Tipo
+          <select name="tipo" required>
+            <option value="ingreso">Ingreso</option>
+            <option value="gasto">Gasto</option>
+          </select>
+        </label>
+
+        <label>
+          Descripción
+          <input name="descripcion" type="text" required placeholder="Ej. pago de factura" maxlength="120" />
+        </label>
+
+        <label>
+          Clasificación
+          <input name="clasificacion" list="clasificaciones" required placeholder="Ej. gasto educación" maxlength="80" />
+        </label>
+
+        <label>
+          Monto
+          <input name="monto" type="number" required min="0.01" step="0.01" />
+        </label>
+
+        <label>
+          Fecha
+          <input name="fecha" type="date" required />
+        </label>
+
+        <button type="submit">Agregar movimiento</button>
+      </form>
+
+      <datalist id="clasificaciones">
+        <option value="pago préstamo"></option>
+        <option value="ingreso nómina"></option>
+        <option value="compra hogar"></option>
+        <option value="gasto educación"></option>
+        <option value="gasto vacaciones"></option>
+        <option value="ingreso trabajo"></option>
+        <option value="ingreso venta"></option>
+      </datalist>
+    </section>
+
+    <section>
+      <div class="filtros">
+        <label>
+          Filtrar por fecha
+          <input id="filtro-fecha" type="date" />
+        </label>
+
+        <label>
+          Filtrar por categoría
+          <input id="filtro-categoria" type="text" placeholder="Ej. educación" maxlength="80" />
+        </label>
+
+        <button id="limpiar-filtros" type="button" class="btn-secondary">Limpiar filtros</button>
+      </div>
+
+      <div class="resumen">
+        <p>Total ingresos: <strong id="total-ingresos">$0.00</strong></p>
+        <p>Total gastos: <strong id="total-gastos">$0.00</strong></p>
+        <p>Balance: <strong id="balance">$0.00</strong></p>
+      </div>
+
+      <table aria-label="Listado de movimientos diarios">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Tipo</th>
+            <th>Descripción</th>
+            <th>Clasificación</th>
+            <th>Monto</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="movimientos-body"></tbody>
+      </table>
+
+      <p id="empty-message" class="empty-message">Aún no hay movimientos registrados.</p>
+    </section>
+  </main>
+
+  <script>
+    const STORAGE_KEY = "movimientosDiarios";
+    const form = document.getElementById("registro-form");
+    const body = document.getElementById("movimientos-body");
+    const emptyMessage = document.getElementById("empty-message");
+    const totalIngresos = document.getElementById("total-ingresos");
+    const totalGastos = document.getElementById("total-gastos");
+    const balance = document.getElementById("balance");
+    const filtroFecha = document.getElementById("filtro-fecha");
+    const filtroCategoria = document.getElementById("filtro-categoria");
+    const limpiarFiltros = document.getElementById("limpiar-filtros");
+
+    const formatter = new Intl.NumberFormat("es-ES", {
+      style: "currency",
+      currency: "USD",
+    });
+
+    function safeText(value) {
+      return String(value).replace(/\s+/g, " ").trim();
+    }
+
+    function loadMovimientos() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return [];
+
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function saveMovimientos(movimientos) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(movimientos));
+    }
+
+    function movementMatchesFilters(movimiento, fechaFilter, categoriaFilter) {
+      const byFecha = !fechaFilter || movimiento.fecha === fechaFilter;
+      const byCategoria = !categoriaFilter || movimiento.clasificacion.toLowerCase().includes(categoriaFilter.toLowerCase());
+      return byFecha && byCategoria;
+    }
+
+    function renderMovimientos() {
+      const movimientos = loadMovimientos();
+      body.innerHTML = "";
+      const fechaFilter = safeText(filtroFecha.value);
+      const categoriaFilter = safeText(filtroCategoria.value);
+
+      let ingresos = 0;
+      let gastos = 0;
+
+      movimientos.forEach((movimiento, index) => {
+        const amount = Number(movimiento.monto);
+
+        if (movimiento.tipo === "ingreso") {
+          ingresos += amount;
+        } else {
+          gastos += amount;
+        }
+
+        if (!movementMatchesFilters(movimiento, fechaFilter, categoriaFilter)) {
+          return;
+        }
+
+        const row = document.createElement("tr");
+
+        [
+          movimiento.fecha,
+          movimiento.tipo,
+          movimiento.descripcion,
+          movimiento.clasificacion,
+          formatter.format(amount),
+        ].forEach((value) => {
+          const cell = document.createElement("td");
+          cell.textContent = value;
+          row.appendChild(cell);
+        });
+
+        const actionCell = document.createElement("td");
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.className = "btn-danger";
+        deleteButton.dataset.deleteIndex = String(index);
+        deleteButton.textContent = "Eliminar";
+        actionCell.appendChild(deleteButton);
+        row.appendChild(actionCell);
+
+        body.appendChild(row);
+      });
+
+      totalIngresos.textContent = formatter.format(ingresos);
+      totalGastos.textContent = formatter.format(gastos);
+      balance.textContent = formatter.format(ingresos - gastos);
+      emptyMessage.style.display = body.children.length === 0 ? "block" : "none";
+      emptyMessage.textContent = movimientos.length === 0
+        ? "Aún no hay movimientos registrados."
+        : "No hay movimientos que coincidan con los filtros.";
+    }
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+
+      const formData = new FormData(form);
+      const tipo = safeText(formData.get("tipo"));
+      const descripcion = safeText(formData.get("descripcion"));
+      const clasificacion = safeText(formData.get("clasificacion"));
+      const monto = Number(formData.get("monto"));
+      const fecha = safeText(formData.get("fecha"));
+
+      if (!["ingreso", "gasto"].includes(tipo) || !descripcion || !clasificacion || !fecha || !Number.isFinite(monto) || monto <= 0) {
+        return;
+      }
+
+      const movimientos = loadMovimientos();
+      movimientos.push({ tipo, descripcion, clasificacion, monto, fecha });
+      saveMovimientos(movimientos);
+
+      form.reset();
+      form.elements.tipo.value = "ingreso";
+      renderMovimientos();
+    });
+
+    body.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLButtonElement)) return;
+
+      const deleteIndex = Number(target.dataset.deleteIndex);
+      if (!Number.isInteger(deleteIndex) || deleteIndex < 0) return;
+
+      const movimientos = loadMovimientos();
+      if (deleteIndex >= movimientos.length) return;
+
+      movimientos.splice(deleteIndex, 1);
+      saveMovimientos(movimientos);
+      renderMovimientos();
+    });
+
+    filtroFecha.addEventListener("input", renderMovimientos);
+    filtroCategoria.addEventListener("input", renderMovimientos);
+    limpiarFiltros.addEventListener("click", () => {
+      filtroFecha.value = "";
+      filtroCategoria.value = "";
+      renderMovimientos();
+    });
+
+    renderMovimientos();
+  </script>
+</body>
+</html>
