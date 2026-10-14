@@ -101,6 +101,30 @@
       margin: 0.75rem 0 0;
       color: #57606a;
     }
+
+    .filtros {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+      align-items: end;
+    }
+
+    .btn-secondary {
+      background: #57606a;
+    }
+
+    .btn-secondary:hover {
+      background: #444c56;
+    }
+
+    .btn-danger {
+      background: #cf222e;
+    }
+
+    .btn-danger:hover {
+      background: #a40e26;
+    }
   </style>
 </head>
 <body>
@@ -152,6 +176,20 @@
     </section>
 
     <section>
+      <div class="filtros">
+        <label>
+          Filtrar por fecha
+          <input id="filtro-fecha" type="date" />
+        </label>
+
+        <label>
+          Filtrar por categoría
+          <input id="filtro-categoria" type="text" placeholder="Ej. educación" maxlength="80" />
+        </label>
+
+        <button id="limpiar-filtros" type="button" class="btn-secondary">Limpiar filtros</button>
+      </div>
+
       <div class="resumen">
         <p>Total ingresos: <strong id="total-ingresos">$0.00</strong></p>
         <p>Total gastos: <strong id="total-gastos">$0.00</strong></p>
@@ -166,6 +204,7 @@
             <th>Descripción</th>
             <th>Clasificación</th>
             <th>Monto</th>
+            <th>Acciones</th>
           </tr>
         </thead>
         <tbody id="movimientos-body"></tbody>
@@ -183,6 +222,9 @@
     const totalIngresos = document.getElementById("total-ingresos");
     const totalGastos = document.getElementById("total-gastos");
     const balance = document.getElementById("balance");
+    const filtroFecha = document.getElementById("filtro-fecha");
+    const filtroCategoria = document.getElementById("filtro-categoria");
+    const limpiarFiltros = document.getElementById("limpiar-filtros");
 
     const formatter = new Intl.NumberFormat("es-ES", {
       style: "currency",
@@ -209,20 +251,32 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(movimientos));
     }
 
+    function movementMatchesFilters(movimiento, fechaFilter, categoriaFilter) {
+      const byFecha = !fechaFilter || movimiento.fecha === fechaFilter;
+      const byCategoria = !categoriaFilter || movimiento.clasificacion.toLowerCase().includes(categoriaFilter.toLowerCase());
+      return byFecha && byCategoria;
+    }
+
     function renderMovimientos() {
       const movimientos = loadMovimientos();
       body.innerHTML = "";
+      const fechaFilter = safeText(filtroFecha.value);
+      const categoriaFilter = safeText(filtroCategoria.value);
 
       let ingresos = 0;
       let gastos = 0;
 
-      movimientos.forEach((movimiento) => {
+      movimientos.forEach((movimiento, index) => {
         const amount = Number(movimiento.monto);
 
         if (movimiento.tipo === "ingreso") {
           ingresos += amount;
         } else {
           gastos += amount;
+        }
+
+        if (!movementMatchesFilters(movimiento, fechaFilter, categoriaFilter)) {
+          return;
         }
 
         const row = document.createElement("tr");
@@ -239,13 +293,25 @@
           row.appendChild(cell);
         });
 
+        const actionCell = document.createElement("td");
+        const deleteButton = document.createElement("button");
+        deleteButton.type = "button";
+        deleteButton.className = "btn-danger";
+        deleteButton.dataset.deleteIndex = String(index);
+        deleteButton.textContent = "Eliminar";
+        actionCell.appendChild(deleteButton);
+        row.appendChild(actionCell);
+
         body.appendChild(row);
       });
 
       totalIngresos.textContent = formatter.format(ingresos);
       totalGastos.textContent = formatter.format(gastos);
       balance.textContent = formatter.format(ingresos - gastos);
-      emptyMessage.style.display = movimientos.length === 0 ? "block" : "none";
+      emptyMessage.style.display = body.children.length === 0 ? "block" : "none";
+      emptyMessage.textContent = movimientos.length === 0
+        ? "Aún no hay movimientos registrados."
+        : "No hay movimientos que coincidan con los filtros.";
     }
 
     form.addEventListener("submit", (event) => {
@@ -268,6 +334,29 @@
 
       form.reset();
       form.elements.tipo.value = "ingreso";
+      renderMovimientos();
+    });
+
+    body.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLButtonElement)) return;
+
+      const deleteIndex = Number(target.dataset.deleteIndex);
+      if (!Number.isInteger(deleteIndex) || deleteIndex < 0) return;
+
+      const movimientos = loadMovimientos();
+      if (deleteIndex >= movimientos.length) return;
+
+      movimientos.splice(deleteIndex, 1);
+      saveMovimientos(movimientos);
+      renderMovimientos();
+    });
+
+    filtroFecha.addEventListener("input", renderMovimientos);
+    filtroCategoria.addEventListener("input", renderMovimientos);
+    limpiarFiltros.addEventListener("click", () => {
+      filtroFecha.value = "";
+      filtroCategoria.value = "";
       renderMovimientos();
     });
 
